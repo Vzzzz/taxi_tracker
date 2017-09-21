@@ -4,11 +4,25 @@ import numpy as np
 import tensorflow as tf
 import os
 import sys
+import urllib
 
 yellow_low = np.array([20,100,100])
 yellow_high = np.array([30,255,255])
 
-def ocvdetect(frame):
+GRAPH_LOCAL_PATH = 'data/taxi_reader_graph.pb'
+GRAPH_URL_PATH = 'https://github.com/Vzzzz/taxi_tracker/raw/master/data/taxi_reader_graph.pb'
+
+def ocvDetect(frame):
+    """Returns frame with selecter yellow object
+        Pipeline:
+            1)blur
+            2)rgb2hsv
+            3)mask by color
+            4)canny (edge detection)
+            5)contours
+            ...
+            6)profit.
+    """
     filtered_frame = cv2.medianBlur(frame, 11)
     hsv_frame = cv2.cvtColor(filtered_frame, cv2.COLOR_BGR2HSV)
     masked_frame = cv2.inRange(hsv_frame, yellow_low, yellow_high)
@@ -27,10 +41,39 @@ def ocvdetect(frame):
         (x,y,w,h) = cv2.boundingRect(contour)
         min_x, max_x = min(x, min_x), max(x+w, max_x)
         min_y, max_y = min(y, min_y), max(y+h, max_y)
+        #This may (must?) be configurable
         if w > 50 and h > 50 and w < width/2 and h < height/2:
             cv2.rectangle(outframe, (x,y), (x+w,y+h), (255, 0, 0), 2)
 
     return outframe
+
+def ocvColorTest(subframe):
+    """Defines the peak color of image (subframe) and compares with yellow"""
+    hsv = cv2.cvtColor(subframe, cv2.COLOR_BGR2HSV)
+    histr = cv2.calcHist([hsv],['r'],None,[256],[0,256])
+    color_key = np.argmax(histr)
+    if color_key >= yellow_low[0] and color_key <= yellow_high[0]:
+        return True
+    return False
+
+def loadTfGraph():
+    """Loads TensorFlow detection graph. If not found locally, downloads it from github"""
+    print('Loading detection graph')
+    detection_graph = tf.Graph()
+    with detection_graph.as_default():
+        graph_def = tf.GraphDef()
+        if not os.path.isfile(GRAPH_LOCAL_PATH):
+            print('Graph file not found, downloading')
+            graphfile = urllib.FancyURLopener()
+            graphfile.retrieve(GRAPH_URL_PATH, GRAPH_LOCAL_PATH)
+            print('Graph saved in %s'%GRAPH_LOCAL_PATH)
+        with tf.gfile.GFile(GRAPH_LOCAL_PATH, 'rb') as fid:
+            serialized_graph = fid.read()
+            graph_def.ParseFromString(serialized_graph)
+            tf.import_graph_def(graph_def, name='')
+            return detection_graph
+    return None
+
 
 
 def main(args):
@@ -47,6 +90,8 @@ def main(args):
         print("Incorrect mode selected")
         exit()
     print(INPUT_PATH, OUTPUT_PATH, MODE)
+    if MODE == 't' or MODE == 'b':
+        detection_graph = loadTfGraph()
     reader = cv2.VideoCapture(INPUT_PATH)
     frames_total = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(reader.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -61,9 +106,9 @@ def main(args):
             ret, frame = reader.read()
             if ret==True:
                 if MODE=='o':
-                    outframe = ocvdetect(frame)
+                    outframe = ocvDetect(frame)
                 if MODE=='t':
-                    outframe = None
+                    outframe = ocvColorTest(frame)
                 if MODE=='b':
                     outframe = None
                 writer.write(outframe)
