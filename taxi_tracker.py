@@ -6,12 +6,14 @@ import os
 import sys
 import urllib
 
+#Low and high bounds of yellow color in HSV
 yellow_low = np.array([20,100,100])
 yellow_high = np.array([30,255,255])
 
 GRAPH_LOCAL_PATH = 'data/taxi_reader_graph.pb'
 GRAPH_URL_PATH = 'https://github.com/Vzzzz/taxi_tracker/raw/master/data/taxi_reader_graph.pb'
 
+#This value is lower bound of probability of state "object is detected" given by TF that we use
 DETECTION_BOUND = 0.3
 
 def ocvDetect(frame):
@@ -105,7 +107,7 @@ def tfDetect(frame, detection_graph, colorTest=False):
                     ymin = int(b[0] * height)
                     xmax = int(b[3] * width)
                     ymax = int(b[2] * height)
-                    #This may be conigurable
+                    #This may be conigurable. We check objects not to be big enough.
                     if (xmax - xmin) > 0.4*width and (ymax-ymin) > 0.4*height:
                         continue
                     if colorTest==True:
