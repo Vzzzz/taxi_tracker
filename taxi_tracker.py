@@ -12,6 +12,8 @@ yellow_high = np.array([30,255,255])
 GRAPH_LOCAL_PATH = 'data/taxi_reader_graph.pb'
 GRAPH_URL_PATH = 'https://github.com/Vzzzz/taxi_tracker/raw/master/data/taxi_reader_graph.pb'
 
+DETECTION_BOUND = 0.3
+
 def ocvDetect(frame):
     """Returns frame with selecter yellow object
         Pipeline:
@@ -50,7 +52,7 @@ def ocvDetect(frame):
 def ocvColorTest(subframe):
     """Defines the peak color of image (subframe) and compares with yellow"""
     hsv = cv2.cvtColor(subframe, cv2.COLOR_BGR2HSV)
-    histr = cv2.calcHist([hsv],['r'],None,[256],[0,256])
+    histr = cv2.calcHist([hsv],[0],None,[256],[0,256])
     color_key = np.argmax(histr)
     if color_key >= yellow_low[0] and color_key <= yellow_high[0]:
         return True
@@ -74,6 +76,44 @@ def loadTfGraph():
             return detection_graph
     return None
 
+def tfDetect(frame, detection_graph, colorTest=False):
+    """This is a mostly copy-paste from Tensorflow Object Detection API example.
+        It takes frame, detects objects with previously recorded graph and in case of
+        color test checks what color of object is below the recognized rectangle
+    """
+    with detection_graph.as_default():
+        with tf.Session(graph=detection_graph) as sess:
+            # Definite input and output Tensors for detection_graph
+            image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+            # Each box represents a part of the image where a particular object was detected.
+            detection_boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+            # Each score represent how level of confidence for each of the objects.
+            # Score is shown on the result image, together with the class label.
+            detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
+            detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
+            num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+            frame_np_expanded = np.expand_dims(frame, axis=0)
+            # Actual detection.
+            (boxes, scores, classes, num) = sess.run(
+                [detection_boxes, detection_scores, detection_classes, num_detections],
+                feed_dict={image_tensor: frame_np_expanded})
+            outframe = frame.copy()
+            _, height, width, _ = frame_np_expanded.shape
+            for b,s in zip(boxes[0], scores[0]):
+                if s > DETECTION_BOUND:
+                    xmin = int(b[1] * width)
+                    ymin = int(b[0] * height)
+                    xmax = int(b[3] * width)
+                    ymax = int(b[2] * height)
+                    #This may be conigurable
+                    if (xmax - xmin) > 0.4*width and (ymax-ymin) > 0.4*height:
+                        continue
+                    if colorTest==True:
+                        crop = frame[ymin:ymax, xmin:xmax]
+                        if not ocvColorTest(crop):
+                            continue
+                    cv2.rectangle(outframe, (xmin, ymin), (xmax, ymax), (255, 0, 0), 2)
+            return outframe
 
 
 def main(args):
@@ -108,9 +148,9 @@ def main(args):
                 if MODE=='o':
                     outframe = ocvDetect(frame)
                 if MODE=='t':
-                    outframe = ocvColorTest(frame)
+                    outframe = tfDetect(frame, detection_graph, colorTest=False)
                 if MODE=='b':
-                    outframe = None
+                    outframe = tfDetect(frame, detection_graph, colorTest=True)
                 writer.write(outframe)
             else:
                 skipped_frames += 1
@@ -122,8 +162,9 @@ def main(args):
         print('Passed')
         reader.release()
         writer.release()
-    except:
+    except Exception:
         print('\nStopped')
+        print(Exception.message)
         if reader is not None and reader.isOpened():
             reader.release()
         if writer is not None:
