@@ -9,7 +9,7 @@ python taxi_tracker.py --input in.mp4 --output out.avi --mode b
 where
 * input sets path to input file
 * output to output
-* mode [o, t, b] choses a detection mode: o - opencv (select by color), t - tensorflow network with pretrained graph, b - is like t, but then it checks if selected car is yellow
+* mode [o, t, b (by default)] choses a detection mode: o - opencv (select by color), t - tensorflow network with pretrained graph, b - is like t, but then it checks if selected car is yellow
 
 Script uses OpenCV for video and imagig routines, it loads video, analyze each frame (there is no region tracking or anything like this), detects objects with two algorithms and stores frames into another videofile (coded with XVID)
 
